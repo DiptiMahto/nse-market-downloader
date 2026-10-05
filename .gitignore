@@ -1,0 +1,19 @@
+# Virtual environment
+.venv/
+
+# Downloaded market data
+data/*.csv
+data/*.zip
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Pytest cache
+.pytest_cache/
+
+# IDE files
+.idea/
+
+# Environment variables
+.env

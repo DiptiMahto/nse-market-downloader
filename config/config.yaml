@@ -1,0 +1,15 @@
+nse:
+  base_url: "https://www.nseindia.com"
+  api_url: "https://www.nseindia.com/api"
+
+download:
+  data_directory: "data"
+  timeout: 30
+  max_retries: 3
+
+logging:
+  level: "INFO"
+
+market_data:
+  file_prefix: "BhavCopy_NSE_CM"
+  archive_directory: "data"
