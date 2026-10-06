@@ -6,10 +6,38 @@ download:
   data_directory: "data"
   timeout: 30
   max_retries: 3
+  backoff_seconds: 2
+
+datasets:
+  top-gainers-losers:
+    page_url: "/market-data/top-gainers-losers"
+    endpoint: "live-analysis-variations"
+    params:
+      index: "gainers"
+    output_prefix: "top_gainers_losers"
+
+  upper-band-hitters:
+    page_url: "/market-data/upper-band-hitters"
+    endpoint: "live-analysis-price-band-hitter"
+    params: {}
+    output_prefix: "upper_band_hitters"
+
+  volume-gainers-spurts:
+    page_url: "/market-data/volume-gainers-spurts"
+    endpoint: "live-analysis-volume-gainers"
+    params: {}
+    output_prefix: "volume_gainers_spurts"
+
+  52-week-high:
+    page_url: "/market-data/52-week-high-equity-market"
+    endpoint: "live-analysis-52week"
+    params:
+      index: "high"
+    output_prefix: "52_week_high"
+
+validation:
+  required_columns:
+    - symbol
 
 logging:
   level: "INFO"
-
-market_data:
-  file_prefix: "BhavCopy_NSE_CM"
-  archive_directory: "data"
