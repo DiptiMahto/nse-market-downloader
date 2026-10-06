@@ -8,11 +8,19 @@ import requests
 
 
 class NSEDownloader:
-    def __init__(self, base_url, api_url, timeout=30, max_retries=3):
+    def __init__(
+        self,
+        base_url,
+        api_url,
+        timeout=30,
+        max_retries=3,
+        backoff_seconds=2
+    ):
         self.base_url = base_url
         self.api_url = api_url
         self.timeout = timeout
         self.max_retries = max_retries
+        self.backoff_seconds = backoff_seconds
 
         self.session = requests.Session()
 
@@ -64,7 +72,7 @@ class NSEDownloader:
                 last_error = error
 
                 if attempt < self.max_retries:
-                    time.sleep(2)
+                    time.sleep(self.backoff_seconds)
 
         raise last_error
 
@@ -89,26 +97,54 @@ class NSEDownloader:
                 last_error = error
 
                 if attempt < self.max_retries:
-                    time.sleep(2)
+                    time.sleep(self.backoff_seconds)
 
         raise last_error
+
+    def get_json(self, endpoint, params=None):
+        """
+        Send a GET request to an NSE API endpoint and return JSON data.
+        """
+        response = self.get(
+            endpoint,
+            params=params
+        )
+
+        try:
+            return response.json()
+        except ValueError as error:
+            raise ValueError(
+                f"NSE returned an invalid JSON response "
+                f"for endpoint: {endpoint}"
+            ) from error
 
     def download_csv(self, endpoint, file_path, params=None):
         """
         Download CSV data from an NSE endpoint and save it locally.
         """
-        response = self.get(endpoint, params=params)
+        response = self.get(
+            endpoint,
+            params=params
+        )
 
         return self.save_csv(
             response.content,
             file_path
         )
 
-    def download_and_extract_zip(self, endpoint, extract_directory, params=None):
+    def download_and_extract_zip(
+        self,
+        endpoint,
+        extract_directory,
+        params=None
+    ):
         """
         Download a ZIP archive from NSE and extract its CSV file.
         """
-        response = self.get(endpoint, params=params)
+        response = self.get(
+            endpoint,
+            params=params
+        )
 
         extract_path = Path(extract_directory)
         extract_path.mkdir(
@@ -116,11 +152,130 @@ class NSEDownloader:
             exist_ok=True
         )
 
-        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        with zipfile.ZipFile(
+            io.BytesIO(response.content)
+        ) as archive:
             archive.extractall(extract_path)
             extracted_files = archive.namelist()
 
         return extracted_files
+
+    def download_top_gainers_losers(self, endpoint):
+        """
+        Download top gainers and top losers data.
+
+        NSE returns the data in the following structure:
+
+        {
+            "legends": [...],
+            "NIFTY": {
+                "data": [...]
+            }
+        }
+        """
+        gainers_response = self.get_json(
+            endpoint,
+            params={"index": "gainers"}
+        )
+
+        losers_response = self.get_json(
+            endpoint,
+            params={"index": "loosers"}
+        )
+
+        gainers = self._extract_index_data(
+            gainers_response
+        )
+
+        losers = self._extract_index_data(
+            losers_response
+        )
+
+        return {
+            "gainers": gainers,
+            "losers": losers
+        }
+
+    def download_upper_band_hitters(self, endpoint):
+        """
+        Download upper band hitter data.
+        """
+        response = self.get_json(endpoint)
+
+        try:
+            upper_data = response["upper"]
+
+            records = []
+
+            for index_data in upper_data.values():
+                records.extend(
+                    index_data.get("data", [])
+                )
+
+            return records
+
+        except (KeyError, AttributeError, TypeError) as error:
+            raise ValueError(
+                "Unexpected response structure for "
+                "upper band hitters."
+            ) from error
+
+    def download_volume_gainers(self, endpoint):
+        """
+        Download volume gainers / spurts data.
+        """
+        response = self.get_json(endpoint)
+
+        if "data" not in response:
+            raise ValueError(
+                "Missing 'data' field in volume gainers response."
+            )
+
+        return response["data"]
+
+    def download_52_week_high(self, endpoint):
+        """
+        Download 52-week high equity market data.
+        """
+        response = self.get_json(endpoint)
+
+        if "data" not in response:
+            raise ValueError(
+                "Missing 'data' field in 52-week high response."
+            )
+
+        return response["data"]
+
+    @staticmethod
+    def _extract_index_data(response):
+        """
+        Extract records from NSE index-based responses.
+        """
+        records = []
+
+        if not isinstance(response, dict):
+            raise ValueError(
+                "Unexpected NSE response format."
+            )
+
+        for key, value in response.items():
+
+            if key == "legends":
+                continue
+
+            if not isinstance(value, dict):
+                continue
+
+            data = value.get("data", [])
+
+            if not isinstance(data, list):
+                raise ValueError(
+                    f"Unexpected data format for index: {key}"
+                )
+
+            records.extend(data)
+
+        return records
 
     @staticmethod
     def build_bhavcopy_filename(trade_date):
@@ -134,12 +289,18 @@ class NSEDownloader:
             f"{date_string}_F_0000.csv.zip"
         )
 
-    def download_bhavcopy(self, trade_date, output_directory):
+    def download_bhavcopy(
+        self,
+        trade_date,
+        output_directory
+    ):
         """
         Download the NSE UDiFF Bhavcopy ZIP for a given trading date
         and extract the CSV into the output directory.
         """
-        filename = self.build_bhavcopy_filename(trade_date)
+        filename = self.build_bhavcopy_filename(
+            trade_date
+        )
 
         url = (
             "https://nsearchives.nseindia.com/"
@@ -156,15 +317,22 @@ class NSEDownloader:
 
         try:
             response = self.get_url(url)
+
         except requests.HTTPError as error:
-            if error.response is not None and error.response.status_code == 404:
+            if (
+                error.response is not None
+                and error.response.status_code == 404
+            ):
                 raise FileNotFoundError(
-                    f"No Bhavcopy found for {trade_date.strftime('%Y-%m-%d')}"
+                    f"No Bhavcopy found for "
+                    f"{trade_date.strftime('%Y-%m-%d')}"
                 ) from error
 
             raise
 
-        zip_path.write_bytes(response.content)
+        zip_path.write_bytes(
+            response.content
+        )
 
         with zipfile.ZipFile(zip_path) as archive:
             archive.extractall(output_path)
@@ -189,4 +357,3 @@ class NSEDownloader:
         path.write_bytes(content)
 
         return path
-

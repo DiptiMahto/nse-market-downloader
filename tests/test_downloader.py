@@ -1,6 +1,8 @@
 from datetime import datetime
 
+import pytest
 import requests
+import responses
 
 from src.downloader import NSEDownloader
 
@@ -140,3 +142,217 @@ def test_download_bhavcopy_raises_file_not_found_on_404(monkeypatch, tmp_path):
         assert False, "Expected FileNotFoundError"
     except FileNotFoundError as error:
         assert str(error) == "No Bhavcopy found for 2026-01-02"
+
+def test_download_top_gainers_losers():
+    downloader = NSEDownloader(
+        base_url="https://www.nseindia.com",
+        api_url="https://www.nseindia.com/api",
+        max_retries=1,
+        backoff_seconds=0
+    )
+
+    gainers_response = {
+        "legends": [],
+        "NIFTY": {
+            "data": [
+                {
+                    "symbol": "ABC",
+                    "ltp": 100,
+                    "perChange": 5.2
+                }
+            ]
+        }
+    }
+
+    losers_response = {
+        "legends": [],
+        "NIFTY": {
+            "data": [
+                {
+                    "symbol": "XYZ",
+                    "ltp": 80,
+                    "perChange": -4.5
+                }
+            ]
+        }
+    }
+
+    with responses.RequestsMock() as mock:
+        mock.add(
+            responses.GET,
+            "https://www.nseindia.com/api/"
+            "live-analysis-variations?index=gainers",
+            json=gainers_response,
+            status=200
+        )
+
+        mock.add(
+            responses.GET,
+            "https://www.nseindia.com/api/"
+            "live-analysis-variations?index=loosers",
+            json=losers_response,
+            status=200
+        )
+
+        result = downloader.download_top_gainers_losers(
+            "live-analysis-variations"
+        )
+
+    assert len(result["gainers"]) == 1
+    assert result["gainers"][0]["symbol"] == "ABC"
+
+    assert len(result["losers"]) == 1
+    assert result["losers"][0]["symbol"] == "XYZ"
+
+
+def test_download_upper_band_hitters():
+    downloader = NSEDownloader(
+        base_url="https://www.nseindia.com",
+        api_url="https://www.nseindia.com/api",
+        max_retries=1,
+        backoff_seconds=0
+    )
+
+    response_data = {
+        "upper": {
+            "AllSec": {
+                "data": [
+                    {
+                        "symbol": "ABC",
+                        "ltp": 100,
+                        "pChange": 5.0
+                    }
+                ]
+            }
+        }
+    }
+
+    with responses.RequestsMock() as mock:
+        mock.add(
+            responses.GET,
+            "https://www.nseindia.com/api/"
+            "live-analysis-price-band-hitter",
+            json=response_data,
+            status=200
+        )
+
+        result = downloader.download_upper_band_hitters(
+            "live-analysis-price-band-hitter"
+        )
+
+    assert len(result) == 1
+    assert result[0]["symbol"] == "ABC"
+
+
+def test_download_volume_gainers():
+    downloader = NSEDownloader(
+        base_url="https://www.nseindia.com",
+        api_url="https://www.nseindia.com/api",
+        max_retries=1,
+        backoff_seconds=0
+    )
+
+    response_data = {
+        "data": [
+            {
+                "symbol": "ABC",
+                "volume": 100000,
+                "ltp": 100
+            }
+        ]
+    }
+
+    with responses.RequestsMock() as mock:
+        mock.add(
+            responses.GET,
+            "https://www.nseindia.com/api/"
+            "live-analysis-volume-gainers",
+            json=response_data,
+            status=200
+        )
+
+        result = downloader.download_volume_gainers(
+            "live-analysis-volume-gainers"
+        )
+
+    assert len(result) == 1
+    assert result[0]["symbol"] == "ABC"
+
+
+def test_download_52_week_high():
+    downloader = NSEDownloader(
+        base_url="https://www.nseindia.com",
+        api_url="https://www.nseindia.com/api",
+        max_retries=1,
+        backoff_seconds=0
+    )
+
+    response_data = {
+        "data": [
+            {
+                "symbol": "ABC",
+                "ltp": 100
+            }
+        ]
+    }
+
+    with responses.RequestsMock() as mock:
+        mock.add(
+            responses.GET,
+            "https://www.nseindia.com/api/"
+            "live-analysis-data-52weekhighstock",
+            json=response_data,
+            status=200
+        )
+
+        result = downloader.download_52_week_high(
+            "live-analysis-data-52weekhighstock"
+        )
+
+    assert len(result) == 1
+    assert result[0]["symbol"] == "ABC"
+
+
+def test_invalid_json_response():
+    downloader = NSEDownloader(
+        base_url="https://www.nseindia.com",
+        api_url="https://www.nseindia.com/api",
+        max_retries=1,
+        backoff_seconds=0
+    )
+
+    with responses.RequestsMock() as mock:
+        mock.add(
+            responses.GET,
+            "https://www.nseindia.com/api/"
+            "live-analysis-volume-gainers",
+            body="This is not valid JSON",
+            status=200
+        )
+
+        with pytest.raises(ValueError, match="invalid JSON"):
+            downloader.get_json(
+                "live-analysis-volume-gainers"
+            )
+
+
+def test_http_error():
+    downloader = NSEDownloader(
+        base_url="https://www.nseindia.com",
+        api_url="https://www.nseindia.com/api",
+        max_retries=1,
+        backoff_seconds=0
+    )
+
+    with responses.RequestsMock() as mock:
+        mock.add(
+            responses.GET,
+            "https://www.nseindia.com/api/"
+            "live-analysis-volume-gainers",
+            status=500
+        )
+
+        with pytest.raises(requests.HTTPError):
+            downloader.get(
+                "live-analysis-volume-gainers"
+            )

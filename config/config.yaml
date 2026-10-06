@@ -13,7 +13,10 @@ datasets:
     page_url: "/market-data/top-gainers-losers"
     endpoint: "live-analysis-variations"
     params:
-      index: "gainers"
+      gainers:
+        index: "gainers"
+      losers:
+        index: "loosers"
     output_prefix: "top_gainers_losers"
 
   upper-band-hitters:
@@ -30,9 +33,8 @@ datasets:
 
   52-week-high:
     page_url: "/market-data/52-week-high-equity-market"
-    endpoint: "live-analysis-52week"
-    params:
-      index: "high"
+    endpoint: "live-analysis-data-52weekhighstock"
+    params: {}
     output_prefix: "52_week_high"
 
 validation:
